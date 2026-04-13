@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BFR Physiology Simulator</title>
+    <style>
+        * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+        body { background-color: #020617; color: #f8fafc; margin: 0; padding: 20px; }
+        
+        .app-container {
+            max-width: 900px; margin: 0 auto; background: #0f172a;
+            border-radius: 12px; padding: 30px; border: 1px solid #1e293b;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+        }
+        h1 { text-align: center; margin-top: 0; color: #f1f5f9; font-size: 2rem; margin-bottom: 30px;}
+
+        .readouts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
+        .card { background: #1e293b; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #334155; }
+        .card label { display: block; font-size: 12px; color: #94a3b8; text-transform: uppercase; font-weight: bold; margin-bottom: 8px; letter-spacing: 1px;}
+        .card .val { font-size: 28px; font-weight: bold; }
+        
+        .text-red { color: #f87171; } .text-blue { color: #60a5fa; } 
+        .text-yellow { color: #fbbf24; } .text-purple { color: #c084fc; }
+        .bg-red { background: #ef4444; } .bg-blue { background: #3b82f6; } 
+        .bg-yellow { background: #f59e0b; } .bg-purple { background: #a855f7; }
+
+        .visualization { background: #020617; padding: 40px 20px; border-radius: 8px; position: relative; border: 1px solid #1e293b; margin-bottom: 30px; }
+        .tube-wrapper { position: relative; margin-bottom: 45px; }
+        .tube-wrapper:last-child { margin-bottom: 0; }
+        
+        .tube-labels { display: flex; justify-content: space-between; font-size: 12px; font-weight: bold; margin-bottom: 8px; opacity: 0.8;}
+        
+        .tube { 
+            height: 60px; background: #1e293b; border-radius: 30px; position: relative; 
+            overflow: hidden; border: 2px solid #334155; box-shadow: inset 0 4px 8px rgba(0,0,0,0.4);
+            transition: transform 0.3s ease;
+        }
+        
+        .cuff { 
+            position: absolute; top: 0; bottom: 0; left: 50%; transform: translateX(-50%); width: 120px; 
+            background: rgba(148,163,184,0.15); border-left: 4px solid #64748b; border-right: 4px solid #64748b; 
+            display: flex; align-items: center; justify-content: center; font-weight: bold; color: #cbd5e1; 
+            border-radius: 8px; z-index: 10; backdrop-filter: blur(2px); transition: height 0.3s ease; letter-spacing: 2px;
+        }
+
+        @keyframes flowRight {
+            0% { transform: translateX(-20px); opacity: 0; }
+            10% { opacity: 0.8; }
+            90% { opacity: 0.8; }
+            100% { transform: translateX(800px); opacity: 0; }
+        }
+        .particle { position: absolute; border-radius: 50%; width: 12px; height: 12px; animation: flowRight linear forwards; }
+
+        .charts { background: #1e293b; padding: 25px; border-radius: 8px; margin-bottom: 30px; position: relative; }
+        
+        .thera-zone { 
+            position: absolute; left: 40%; width: 40%; top: 0; bottom: 0; 
+            background: rgba(16,185,129,0.06); border-left: 1px dashed rgba(16,185,129,0.4); border-right: 1px dashed rgba(16,185,129,0.4); 
+            display:flex; align-items:center; justify-content:center; pointer-events:none; z-index: 1;
+        }
+        .thera-zone span { color: rgba(16,185,129,0.4); text-transform: uppercase; font-weight: bold; letter-spacing: 1.5px;}
+        
+        .chart-row { margin-bottom: 18px; position: relative; z-index: 2; }
+        .chart-lbl { font-size: 14px; font-weight: bold; margin-bottom: 6px; display: block; }
+        .bar-bg { width: 100%; height: 24px; background: #0f172a; border-radius: 4px; overflow: hidden; }
+        .bar-fill { height: 100%; transition: width 0.3s ease-out; }
+        
+        .x-axis { display: flex; justify-content: space-between; font-size: 12px; color: #94a3b8; font-weight: bold; margin-top: 15px; position: relative; z-index: 2;}
+
+        .controls { background: #020617; padding: 25px; border-radius: 8px; display: flex; align-items: center; gap: 30px; border: 1px solid #1e293b; }
+        
+        .slider-box { flex: 1; }
+        .slider-box label { display: block; font-weight: bold; margin-bottom: 15px; color: #cbd5e1; font-size: 16px;}
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #10b981; height: 6px; }
+        
+        .btn-group { display: flex; gap: 15px; }
+        .btn { padding: 14px 24px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: white; transition: 0.2s; font-size: 15px;}
+        .btn-start { background: #334155; border: 1px solid #475569;}
+        .btn-reset { background: #0f172a; border: 1px solid #475569;}
+        .btn:hover { filter: brightness(1.2);}
+
+        @media (max-width: 768px) {
+            .readouts { grid-template-columns: 1fr 1fr; }
+            .controls { flex-direction: column; align-items: stretch; gap: 20px;}
+            .btn-group { flex-direction: column; }
+            .thera-zone span { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <h1>BFR Physiology Simulator</h1>
+
+    <div class="readouts">
+        <div class="card"><label>Arterial Inflow</label><div class="val text-red" id="val-art">100.0%</div></div>
+        <div class="card"><label>Venous Return</label><div class="val text-blue" id="val-ven">100.0%</div></div>
+        <div class="card"><label>Lactate</label><div class="val text-yellow" id="val-lac">5.0 U</div></div>
+        <div class="card"><label>Type II Fibers</label><div class="val text-purple" id="val-typ">5.0%</div></div>
+    </div>
+
+    <div class="visualization">
+        <div class="cuff" id="vis-cuff">CUFF</div>
+        
+        <div class="tube-wrapper">
+            <div class="tube-labels text-red"><span>HEART &rarr;</span><span>&rarr; MUSCLE</span></div>
+            <div class="tube" id="tube-art"></div>
+        </div>
+        
+        <div class="tube-wrapper">
+            <div class="tube-labels text-blue"><span>HEART &larr;</span><span>&larr; MUSCLE</span></div>
+            <div class="tube" id="tube-ven"></div>
+        </div>
+    </div>
+
+    <div class="charts">
+        <div class="thera-zone"><span>Therapeutic Range</span></div>
+        
+        <div class="chart-row">
+            <span class="chart-lbl text-red">Arterial Inflow</span>
+            <div class="bar-bg"><div class="bar-fill bg-red" id="bar-art" style="width: 100%;"></div></div>
+        </div>
+        <div class="chart-row">
+            <span class="chart-lbl text-blue">Venous Return</span>
+            <div class="bar-bg"><div class="bar-fill bg-blue" id="bar-ven" style="width: 100%;"></div></div>
+        </div>
+        <div class="chart-row">
+            <span class="chart-lbl text-yellow">Lactate Accumulation</span>
+            <div class="bar-bg"><div class="bar-fill bg-yellow" id="bar-lac" style="width: 5%;"></div></div>
+        </div>
+        <div class="chart-row">
+            <span class="chart-lbl text-purple">Type II Recruitment</span>
+            <div class="bar-bg"><div class="bar-fill bg-purple" id="bar-typ" style="width: 5%;"></div></div>
+        </div>
+        <div class="x-axis">
+            <span>0%</span><span>20%</span><span>40%</span><span>60%</span><span>80%</span><span>100%</span>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="slider-box">
+            <label>Occlusion Pressure: <span id="val-occ" style="color: white">0%</span></label>
+            <input type="range" id="slider-occ" min="0" max="100" value="0" oninput="handleSlider(this.value)">
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-start" id="btn-start" onclick="toggleTraining()">Start Training</button>
+            <button class="btn btn-reset" onclick="resetSession()">Reset Session</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // System State
+    let occlusion = 0;
+    let isTraining = false;
+    let lactate = 5.0;
+    let typeII = 5.0;
+    let arterial = 100;
+    let venous = 100;
+    
+    let trainingInterval = null;
+    let artParticleInterval = null;
+    let venParticleInterval = null;
+
+    // Hardcoded HTML Handlers
+    function handleSlider(val) {
+        occlusion = parseInt(val);
+        updateFlows();
+        updateDOM();
+        restartParticleGenerators();
+    }
+
+    function toggleTraining() {
+        isTraining = !isTraining;
+        const btn = document.getElementById('btn-start');
+        
+        if (isTraining) {
+            btn.innerText = "Stop Simulation";
+            btn.style.backgroundColor = "#10b981"; // Green active state
+            btn.style.color = "#020617";
+            
+            // Start the timer
+            trainingInterval = setInterval(() => {
+                const stress = (arterial - venous) / 100;
+                lactate = Math.min(100, lactate + (stress * 1.5));
+                typeII = Math.min(100, typeII + (stress * 3.0));
+                updateDOM();
+            }, 1000);
+        } else {
+            btn.innerText = "Start Training";
+            btn.style.backgroundColor = "#334155"; // Default grey
+            btn.style.color = "white";
+            clearInterval(trainingInterval);
+        }
+    }
+
+    function resetSession() {
+        isTraining = false;
+        clearInterval(trainingInterval);
+        
+        const btn = document.getElementById('btn-start');
+        btn.innerText = "Start Training";
+        btn.style.backgroundColor = "#334155";
+        btn.style.color = "white";
+        
+        occlusion = 0;
+        document.getElementById('slider-occ').value = 0;
+        lactate = 5.0;
+        typeII = 5.0;
+        
+        updateFlows();
+        updateDOM();
+        restartParticleGenerators();
+    }
+
+    // Logic
+    function updateFlows() {
+        let a = 100, v = 100;
+        if (occlusion <= 40) {
+            v = 100 - (occlusion * (60 / 40)); 
+        } else if (occlusion <= 80) {
+            v = 40 - ((occlusion - 40) * (30 / 40)); 
+            a = 100 - ((occlusion - 40) * (20 / 40)); 
+        } else {
+            v = 10 - ((occlusion - 80) * (10 / 20)); 
+            a = 80 - ((occlusion - 80) * (70 / 20)); 
+        }
+        arterial = Math.max(0, a);
+        venous = Math.max(0, v);
+    }
+
+    function updateDOM() {
+        document.getElementById('val-occ').innerText = occlusion + '%';
+        document.getElementById('val-art').innerText = arterial.toFixed(1) + '%';
+        document.getElementById('val-ven').innerText = venous.toFixed(1) + '%';
+        document.getElementById('val-lac').innerText = lactate.toFixed(1) + ' U';
+        document.getElementById('val-typ').innerText = typeII.toFixed(1) + '%';
+
+        document.getElementById('bar-art').style.width = arterial + '%';
+        document.getElementById('bar-ven').style.width = venous + '%';
+        document.getElementById('bar-lac').style.width = lactate + '%';
+        document.getElementById('bar-typ').style.width = typeII + '%';
+
+        const compression = occlusion / 100;
+        document.getElementById('tube-art').style.transform = `scaleY(${1 - (compression * 0.4)})`;
+        document.getElementById('tube-ven').style.transform = `scaleY(${1 - (compression * 0.8)})`;
+        document.getElementById('vis-cuff').style.height = `${100 + (occlusion * 0.2)}%`;
+    }
+
+    // Particles
+    function spawnParticle(tubeId, colorClass, flowPercentage) {
+        if (flowPercentage <= 0) return;
+        const tube = document.getElementById(tubeId);
+        const particle = document.createElement('div');
+        particle.className = `particle ${colorClass}`;
+        particle.style.top = `${Math.random() * 60 + 20}%`;
+        const duration = 1.5 + ((100 - flowPercentage) / 10);
+        particle.style.animationDuration = `${duration}s`;
+        tube.appendChild(particle);
+        setTimeout(() => { if (tube.contains(particle)) tube.removeChild(particle); }, duration * 1000);
+    }
+
+    function restartParticleGenerators() {
+        clearInterval(artParticleInterval);
+        clearInterval(venParticleInterval);
+        if (arterial > 0) {
+            artParticleInterval = setInterval(() => spawnParticle('tube-art', 'bg-red', arterial), Math.max(80, 1000 - (arterial * 8)));
+        }
+        if (venous > 0) {
+            venParticleInterval = setInterval(() => spawnParticle('tube-ven', 'bg-blue', venous), Math.max(80, 1000 - (venous * 8)));
+        }
+    }
+
+    // Initialize on load
+    window.onload = () => {
+        updateFlows();
+        updateDOM();
+        restartParticleGenerators();
+    };
+</script>
+</body>
+</html>
